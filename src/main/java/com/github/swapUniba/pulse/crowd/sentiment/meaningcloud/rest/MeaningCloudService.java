@@ -83,13 +83,16 @@ public class MeaningCloudService {
         if (meaningCloudResponse.status.remaining_credits <= 0) {
             serviceNumber += 1;
 
-            if (serviceNumber > SECRET_KEY.length) {
+            if (serviceNumber >= SECRET_KEY.length) {
                 serviceNumber = 0;
                 logger.info("All API KEY used!");
                 throw new Exception("MeaningCloud request limit reached");
 
             } else {
                 logger.info("Switching API KEY to " +  SECRET_KEY[serviceNumber]);
+
+                // recursive call to the same method
+                meaningCloudResponse = makeRequest(lang, text);
             }
         }
 
