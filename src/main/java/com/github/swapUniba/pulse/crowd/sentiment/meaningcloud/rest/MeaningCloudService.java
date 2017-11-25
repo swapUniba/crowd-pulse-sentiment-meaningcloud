@@ -7,6 +7,7 @@ import com.squareup.okhttp.OkHttpClient;
 import com.squareup.okhttp.Request;
 import com.squareup.okhttp.RequestBody;
 import com.squareup.okhttp.Response;
+import org.apache.logging.log4j.Logger;
 
 import java.io.*;
 import java.util.Properties;
@@ -18,6 +19,8 @@ import java.util.Properties;
  */
 public class MeaningCloudService {
 
+    private static final Logger logger = PulseLogger.getLogger(MeaningCloudService.class);
+
     private static final String PROP_API_KEYS = "meaningcloud.keys";
     private static final String MEANINGCLOUD_ENDPOINT = "https://api.meaningcloud.com";
     private static final String SENTIMENT_API = "/sentiment-2.1";
@@ -26,7 +29,7 @@ public class MeaningCloudService {
     private static String[] SECRET_KEY;
     private static byte serviceNumber = 0;
 
-    /**
+    /*
      * Load the properties.
      */
     static {
@@ -41,8 +44,7 @@ public class MeaningCloudService {
             SECRET_KEY = keys.split(",");
 
         } catch (IOException noFileException) {
-            PulseLogger.getLogger(MeaningCloudService.class)
-                    .error("Error while loading MeaningCloud configuration", noFileException);
+            logger.error("Error during MeaningCloud configuration loading", noFileException);
 
             SECRET_KEY = new String[1];
             SECRET_KEY[0] = "";
@@ -57,6 +59,8 @@ public class MeaningCloudService {
      * @throws Exception
      */
     public MeaningCloudResponse makeRequest(String lang, String text) throws Exception {
+        logger.info("Using API KEY " + SECRET_KEY[serviceNumber]);
+
         OkHttpClient client = new OkHttpClient();
 
         MediaType mediaType = MediaType.parse(MEDIA_TYPE);
@@ -73,12 +77,19 @@ public class MeaningCloudService {
         MeaningCloudResponse meaningCloudResponse =
                 gsonResponse.fromJson(response.body().string(), MeaningCloudResponse.class);
 
+        logger.info("Remaining requests for API KEY " + SECRET_KEY[serviceNumber] + " : " + meaningCloudResponse.status.remaining_credits);
+
         //check remaining requests
-        if (meaningCloudResponse.status.remaining_credits == 0) {
+        if (meaningCloudResponse.status.remaining_credits <= 0) {
             serviceNumber += 1;
+
             if (serviceNumber > SECRET_KEY.length) {
                 serviceNumber = 0;
+                logger.info("All API KEY used!");
                 throw new Exception("MeaningCloud request limit reached");
+
+            } else {
+                logger.info("Switching API KEY to " +  SECRET_KEY[serviceNumber]);
             }
         }
 

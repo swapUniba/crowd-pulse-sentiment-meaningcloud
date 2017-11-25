@@ -87,32 +87,49 @@ public class MeaningCloudSentimentAnalyzer extends IPlugin<Message, Message, Voi
 
                 @Override
                 public void onNext(List<Message> messages) {
-                    messages.forEach(m -> reportElementAsStarted(m.getId()));
                     MeaningCloudService service = new MeaningCloudService();
-                    int remainingAttempts = 3;
+                    int remainingAttempts = 1; // changed this value from 3 to 1
+
                     do {
                         try {
 
                             // for each message, set the result
-                            for (Message message : messages) {
-                                MeaningCloudResponse response = service.makeRequest("auto", message.getText());
-                                message.setSentiment(response.getSentimentScore());
+                            for (int i = 0; i < messages.size(); i++) {
+
+
+                                // if the sentiment score has not calculated yet
+                                if (messages.get(i).getSentiment() == null) {
+                                    logger.info("Message: " + messages.get(i).getText());
+
+                                    MeaningCloudResponse response = service.makeRequest("auto", messages.get(i).getText());
+                                    Double scoreCalculated = response.getSentimentScore();
+
+                                    logger.info("Sentiment score calculated: " + scoreCalculated);
+
+                                    if (scoreCalculated == null) {
+                                        logger.info("MeaningCloud message status: " + response.status.msg);
+                                    }
+
+                                    messages.get(i).setSentiment(scoreCalculated);
+
+                                } else {
+
+                                    logger.info("Message skipped (sentiment score calculated)");
+
+                                    // if all messages in the list have already the sentiment score skip to others
+                                    if (i == messages.size() - 1) {
+                                        subscriber.onNext(messages);
+                                    }
+                                }
+
                             }
+
                             remainingAttempts = 0;
                         } catch (Exception e) {
                             remainingAttempts -= 1;
-
                             logger.error(e.getMessage());
-                            logger.error("Remaining attempts: " + remainingAttempts);
-
-                            //set default sentiment
-                            if (remainingAttempts == 0) {
-                                messages.forEach(m -> m.setSentiment(0.0));
-                            }
                         }
                     } while (remainingAttempts > 0);
-                    messages.forEach(m -> reportElementAsEnded(m.getId()));
-
 
                     try {
                         Thread.sleep(DELAY_MEANINGCLOUD_SERVICE);

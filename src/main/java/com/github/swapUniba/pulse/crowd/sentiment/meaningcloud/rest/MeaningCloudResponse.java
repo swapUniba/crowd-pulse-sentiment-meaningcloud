@@ -21,34 +21,31 @@ public class MeaningCloudResponse {
 
     /**
      * Converts the sentiment categorical tag into semantic number.
-     * @return the sentiment score number (0 for NONE or NEUTRAL, 1 for P+, 0.5 for P, -1 for N+, -0.5 for N)
+     * @return the sentiment score number (0 for NONE or NEUTRAL, 1 for P+ and P, -1 for N+ and N)
      */
-    public double getSentimentScore() {
-        double result = 0;
-        if (score_tag != null && score_tag != "") {
+    public Double getSentimentScore() {
+        Double result = null;
+        if (score_tag != null && !score_tag.equals("")) {
             switch (score_tag) {
                 case "P+":
-                    result = 1;
+                    result = (double) 1;
                     break;
                 case "P":
-                    result = 0.5;
+                    result = (double) 1;
                     break;
                 case "NEU":
-                    result = 0;
+                    result = (double) 0;
                     break;
                 case "N":
-                    result = -0.5;
+                    result = (double) -1;
                     break;
                 case "N+":
-                    result = -1;
+                    result = (double) -1;
                     break;
                 case "NONE":
-                    result = 0;
+                    result = null;
                     break;
             }
-        } else {
-            throw new RuntimeException("score_tag is null or empty. " +
-                    "MeaningCloud status message: " + status.msg);
         }
         return result;
     }
