@@ -24,7 +24,7 @@ import rx.observers.SafeSubscriber;
  * @author Cosimo Lovascio
  *
  */
-public class MeaningCloudSentimentAnalyzer extends IPlugin<Message, Message, VoidConfig> {
+public class MeaningCloudSentimentAnalyzer extends IPlugin<Message, Message, MeaningCloudSentimentAnalyzerConfig> {
     private static final String PLUGIN_NAME = "sentiment-meaningcloud";
     private static final int MAX_MESSAGES_PER_SECOND = 2;
     private static final long DELAY_MEANINGCLOUD_SERVICE = 1500;
@@ -36,8 +36,8 @@ public class MeaningCloudSentimentAnalyzer extends IPlugin<Message, Message, Voi
     }
 
     @Override
-    public VoidConfig getNewParameter() {
-        return new VoidConfig();
+    public MeaningCloudSentimentAnalyzerConfig getNewParameter() {
+        return new MeaningCloudSentimentAnalyzerConfig();
     }
 
     /**
@@ -48,16 +48,16 @@ public class MeaningCloudSentimentAnalyzer extends IPlugin<Message, Message, Voi
      * @return Always {@code null}.
      */
     @Override
-    protected Operator<Message, Message> getOperator(VoidConfig params) {
+    protected Operator<Message, Message> getOperator(MeaningCloudSentimentAnalyzerConfig params) {
         return null;
     }
 
 
     @Override
-    public Observable.Transformer<Message, Message> transform(VoidConfig params) {
+    public Observable.Transformer<Message, Message> transform(MeaningCloudSentimentAnalyzerConfig params) {
         return messages -> messages
                 .buffer(MAX_MESSAGES_PER_SECOND)
-                .lift(new MeaningCloudOperator())
+                .lift(new MeaningCloudOperator(params))
                 // flatten the sequence of Observables back into one single Observable
                 .compose(RxUtil.flatten());
     }
@@ -68,6 +68,12 @@ public class MeaningCloudSentimentAnalyzer extends IPlugin<Message, Message, Voi
      *
      */
     private class MeaningCloudOperator implements Observable.Operator<List<Message>, List<Message>> {
+
+        private MeaningCloudSentimentAnalyzerConfig params;
+
+        MeaningCloudOperator(MeaningCloudSentimentAnalyzerConfig params) {
+            this.params = params;
+        }
 
         @Override
         public Subscriber<? super List<Message>> call(Subscriber<? super List<Message>> subscriber) {
@@ -87,39 +93,55 @@ public class MeaningCloudSentimentAnalyzer extends IPlugin<Message, Message, Voi
 
                 @Override
                 public void onNext(List<Message> messages) {
-                    MeaningCloudService service = new MeaningCloudService();
                     int remainingAttempts = 1; // changed this value from 3 to 1
 
                     do {
                         try {
 
-                            // for each message, set the result
+                            // for each message
                             for (int i = 0; i < messages.size(); i++) {
 
+                                switch (params.getCalculate()) {
 
-                                // if the sentiment score has not calculated yet
-                                if (messages.get(i).getSentiment() == null) {
-                                    logger.info("Message: " + messages.get(i).getText());
+                                    case MeaningCloudSentimentAnalyzerConfig.ALL:
+                                        calculateSentiment(messages.get(i));
+                                        break;
 
-                                    MeaningCloudResponse response = service.makeRequest("auto", messages.get(i).getText());
-                                    Double scoreCalculated = response.getSentimentScore();
+                                    case MeaningCloudSentimentAnalyzerConfig.NEW:
 
-                                    logger.info("Sentiment score calculated: " + scoreCalculated);
+                                        // if the sentiment score has not calculated yet
+                                        if (messages.get(i).getSentiment() == null) {
+                                            calculateSentiment(messages.get(i));
 
-                                    if (scoreCalculated == null) {
-                                        logger.info("MeaningCloud message status: " + response.status.msg);
-                                    }
+                                        } else {
+                                            logger.info("Message skipped (sentiment score calculated)");
 
-                                    messages.get(i).setSentiment(scoreCalculated);
+                                            // if all messages in the list have already the sentiment score skip to others
+                                            if (i == messages.size() - 1) {
+                                                subscriber.onNext(messages);
+                                            }
+                                        }
+                                        break;
 
-                                } else {
+                                    case MeaningCloudSentimentAnalyzerConfig.NEUTER:
 
-                                    logger.info("Message skipped (sentiment score calculated)");
+                                        // if the sentiment score is neuter (0)
+                                        if (messages.get(i).getSentiment() != null && messages.get(i).getSentiment() == 0) {
+                                            calculateSentiment(messages.get(i));
 
-                                    // if all messages in the list have already the sentiment score skip to others
-                                    if (i == messages.size() - 1) {
-                                        subscriber.onNext(messages);
-                                    }
+                                        } else {
+                                            logger.info("Message skipped (sentiment score null or calculated)");
+
+                                            // if all messages in the list have already the sentiment score skip to others
+                                            if (i == messages.size() - 1) {
+                                                subscriber.onNext(messages);
+                                            }
+                                        }
+                                        break;
+
+                                    default:
+                                        calculateSentiment(messages.get(i));
+                                        break;
                                 }
 
                             }
@@ -138,6 +160,29 @@ public class MeaningCloudSentimentAnalyzer extends IPlugin<Message, Message, Voi
                     }
                     subscriber.onNext(messages);
                 }
+
+                /**
+                 * Calculate the sentiment of the given message. Use side effect!
+                 * @param message the message
+                 */
+                private void calculateSentiment(Message message) throws Exception {
+                    MeaningCloudService service = new MeaningCloudService();
+
+                    logger.info("Message: " + message.getText());
+
+                    MeaningCloudResponse response = service.makeRequest("auto", message.getText());
+                    Double scoreCalculated = response.getSentimentScore();
+
+                    logger.info("Sentiment score calculated: " + scoreCalculated);
+
+                    if (scoreCalculated == null) {
+                        logger.info("MeaningCloud message status: " + response.status.msg);
+                    }
+
+                    message.setSentiment(scoreCalculated);
+                }
+
+
             });
         }
     }
